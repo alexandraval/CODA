@@ -14,60 +14,67 @@ function create_downsampled_tif_images(pth,ds,subfolders)
 warning ('off','all');
 disp('creating downsampled tif images')
 
+% Normalize input path to the current platform separator.
+pth = char(pth);
+pth = strtrim(pth);
+if filesep == '/'
+    pth = strrep(pth,'\','/');
+else
+    pth = strrep(pth,'/','\');
+end
+while numel(pth) > 1 && (pth(end) == '/' || pth(end) == '\')
+    pth(end) = [];
+end
 
-if pth(end)~='\';pth=[pth,'\'];end
-imlist=dir([pth,'*.ndpi']);ft='ndpi';
-if isempty(imlist);imlist=dir([pth,'*.svs']);ft='svs';end
-if isempty(imlist);imlist=dir([pth,'*.scn']);ft='scn';end
+imlist = dir(fullfile(pth,'*.ndpi')); ft = 'ndpi';
+if isempty(imlist); imlist = dir(fullfile(pth,'*.svs')); ft = 'svs'; end
+if isempty(imlist); imlist = dir(fullfile(pth,'*.scn')); ft = 'scn'; end
 
 % set image output folder
-if length(ds)>1
-    outpth=[pth,char(subfolders(1))];
-    outpthe=[pth,char(subfolders(end))];
+if length(ds) > 1
+    outpth = fullfile(pth,char(subfolders(1)));
+    outpthe = fullfile(pth,char(subfolders(end)));
 else
-    outpth=[pth,subfolders];
-    outpthe=outpth;
+    outpth = fullfile(pth,char(subfolders));
+    outpthe = outpth;
 end
-if outpth(end)~='\';outpth=[outpth,'\'];end
-if ~isfolder(outpth);mkdir(outpth); end
+if ~isfolder(outpth); mkdir(outpth); end
 
 % output image type
-tps='tif';
+tps = 'tif';
 
-ds0=ds(1);
-for k=1:length(imlist)
-    nm=imlist(k).name;tic;
-    mpp=get_mpp_of_image(pth,nm);
+ds0 = ds(1);
+for k = 1:length(imlist)
+    nm = imlist(k).name; tic;
+    mpp = get_mpp_of_image(pth,nm);
     disp(['downsampling image ',num2str(k),' of ',num2str(length(imlist)),': ',nm])
-    nmout=strrep(nm,ft,tps);
+    nmout = strrep(nm,ft,tps);
     
-    if exist([outpth,nmout],'file') && exist([outpthe,nmout],'file')
+    if exist(fullfile(outpth,nmout),'file') && exist(fullfile(outpthe,nmout),'file')
         disp('   PREVIOUSLY LOADED');
         continue;
     end
     
     % get size of image
-    tmp=imfinfo([pth,nm]);
-    image_layer=cat(1,tmp.Height);
-    image_layer=find(image_layer==max(image_layer));
-    fx=ds0/mpp; % resizing factor to produce image of 2um/pixel
+    tmp = imfinfo(fullfile(pth,nm));
+    image_layer = cat(1,tmp.Height);
+    image_layer = find(image_layer == max(image_layer));
+    fx = ds0/mpp; % resizing factor to produce image of ds0 um/pixel
 
-    imtif=imread([pth,nm],image_layer);
-    xx=ceil(size(imtif(:,:,1))/fx);
-    imtif=imresize(imtif,xx,'nearest');
+    imtif = imread(fullfile(pth,nm),image_layer);
+    xx = ceil(size(imtif(:,:,1))/fx);
+    imtif = imresize(imtif,xx,'nearest');
     
-    imwrite(imtif,[outpth,nmout]);
-    for jj=2:length(ds)
-        outpth2=[pth,char(subfolders(jj))];
-        if outpth2(end)~='\';outpth2=[outpth2,'\'];end
-        if ~isfolder(outpth2);mkdir(outpth2);end
+    imwrite(imtif,fullfile(outpth,nmout));
+    for jj = 2:length(ds)
+        outpth2 = fullfile(pth,char(subfolders(jj)));
+        if ~isfolder(outpth2); mkdir(outpth2); end
         
         % calculate rescale factor: ex. 2um/px --> 8um/px = rescale image to 1/4
-        xx=ds(1)/ds(jj); 
-        imtif2=imresize(imtif,xx,'nearest');
-        imwrite(imtif2,[outpth2,nmout]);
+        xx = ds(1)/ds(jj); 
+        imtif2 = imresize(imtif,xx,'nearest');
+        imwrite(imtif2,fullfile(outpth2,nmout));
     end
     disp(['  Finished in ',num2str(round(toc)),' seconds.'])
     
 end
-

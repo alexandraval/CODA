@@ -23,7 +23,8 @@ if ~exist('cutoff','var');cutoff=0.15;end
     % get percentage of tissue in each registration ROI
     checkS=zeros(size(x));
     numb=200;
-    for b=1:numb:size(x)
+    npts = numel(x);
+    for b=1:numb:npts
         b2=min([b+numb-1 length(x)]);
         ii=getImLocalWindowInd_rf([x(b:b2) y(b:b2)],size(TAmv),m-1,1);
         
@@ -39,6 +40,16 @@ if ~exist('cutoff','var');cutoff=0.15;end
     end
     clearvars ii imcheck imcheck2
     checkS=checkS/(sz^2);
+
+    % If no valid registration grid points exist, return identity warp.
+    if isempty(x) || all(checkS<=cutoff)
+        D = zeros([szim(1) szim(2) 2]);
+        xgg = [];
+        ygg = [];
+        xx = [];
+        yy = [];
+        return;
+    end
     
     yg=(y-min(y))/di+1;
     xg=(x-min(x))/di+1;

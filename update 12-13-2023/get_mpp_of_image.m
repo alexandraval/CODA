@@ -1,12 +1,12 @@
 function mpp=get_mpp_of_image(pth,nm)
 
 if contains(nm,'.ndpi')
-    a=imfinfo([pth,nm]);
+    a=imfinfo(fullfile(pth,nm));
     tmp=a(1).XResolution;
     sxNDPI=(1./tmp).*10000;
     mpp=sxNDPI;
 elseif contains(nm,'.svs')
-    a=imfinfo([pth,nm]);
+    a=imfinfo(fullfile(pth,nm));
     tmp=a(1).ImageDescription;
     b1=strfind(tmp,'|MPP = ');
     b2=strfind(tmp,'|');
