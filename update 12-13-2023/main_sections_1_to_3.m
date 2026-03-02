@@ -281,7 +281,7 @@ if run_section4_apply_to_5x_and_build_volume
 
     pth_reg5x = fullfile(pth5x, 'registeredE');
     save_mat = fullfile(pth_reg5x, 'vol_rgb_5x.mat');
-    write_check_tiff = true;
+    write_check_tiff = false; % large 5x stacks can exceed classic TIFF size limits
     [vol_rgb, names] = build_rgb_volume_from_registered(pth_reg5x, save_mat, write_check_tiff); %#ok<NASGU,ASGLU>
 
     fprintf('Volume saved: %s\n', save_mat);
@@ -293,4 +293,109 @@ if run_section4_apply_to_5x_and_build_volume
     if exist('sliceViewer','file')
         sliceViewer(vol_rgb);
     end
+end
+
+%% Section 5 - Side-view 3D visualization with physical Z scaling
+% Allow this section to run independently.
+if ~exist('run_section5_sideview_visualization','var'); run_section5_sideview_visualization = true; end
+if ~exist('pth','var') || isempty(pth)
+    pth = '/Users/alexandravaldepenas/Desktop/CODA/processed_serials';
+end
+
+if run_section5_sideview_visualization
+    fprintf('\n=== Section 5: side-view visualization (XZ / YZ) ===\n');
+
+    matfile = fullfile(pth,'registeredE','vol_rgb_5x.mat');
+    assert(exist(matfile,'file')==2, 'Volume MAT not found: %s', matfile);
+    S = load(matfile,'vol_rgb');
+    vol_rgb = S.vol_rgb;
+
+    % vol_rgb is [H W 3 Z]. Convert to [H W Z 3] for easier slicing.
+    V = permute(vol_rgb,[1 2 4 3]);
+
+    % --- Set physical spacing here ---
+    % xy_um: micron/pixel in the 5x volume (set to your true value)
+    % z_um:  section spacing in microns (set to your true value)
+    xy_um = 2;
+    z_um = 10;
+    z_scale_physical = z_um / xy_um;
+    z_display_boost = 5; % extra visual exaggeration for thin stacks
+    z_scale = z_scale_physical * z_display_boost;
+    fprintf('Using spacing: XY=%g um/px, Z=%g um/slice, physical z_scale=%g, display boost=%g, final z_scale=%g\n', ...
+        xy_um, z_um, z_scale_physical, z_display_boost, z_scale);
+
+    % XZ side view (middle Y)
+    y0 = round(size(V,2)/2);
+    xz = squeeze(V(:,y0,:,:));  % [H Z 3]
+    xz_show = imresize(xz,[size(xz,1), max(1,round(size(xz,2)*z_scale))],'nearest');
+    figure; imshow(xz_show); title('XZ side view (physically scaled)');
+
+    % YZ side view (middle X)
+    x0 = round(size(V,1)/2);
+    yz = squeeze(V(x0,:,:,:));  % [W Z 3]
+    yz_show = imresize(yz,[size(yz,1), max(1,round(size(yz,2)*z_scale))],'nearest');
+    figure; imshow(yz_show); title('YZ side view (physically scaled)');
+
+    % Color-preserving rotatable 3D stack view:
+    % repeat each slice N times to avoid visible spacing between slices.
+    xy_downsample_for_3d = 32;   % increase for lighter rendering
+    repeat_per_slice = 5;        % slice1xN, slice2xN, ...
+
+    rows = 1:xy_downsample_for_3d:size(V,1);
+    cols = 1:xy_downsample_for_3d:size(V,2);
+    Vd = V(rows, cols, :, :);                  % [h w z 3]
+    Vrep = repelem(Vd, 1, 1, repeat_per_slice, 1);
+    [h3,w3,z3,~] = size(Vrep);
+    [X,Y] = meshgrid(1:w3,1:h3);
+
+    fig = figure('Color','k', 'Name', 'Interactive 3D color stack');
+    ax = axes(fig); hold(ax,'on');
+    hs = gobjects(z3,1);
+    white_thr = 220; % brighter-than-this is candidate background
+    sat_thr = 28;    % low saturation threshold for near-white/gray pixels
+    for zz = 1:z3
+        img = squeeze(Vrep(:,:,zz,:));         % [h w 3], preserves original colors
+        sat = max(img,[],3) - min(img,[],3);
+        is_white_bg = all(img > white_thr, 3) & sat < sat_thr;
+        alpha_mask = single(~is_white_bg); % 1=tissue, 0=white background
+        hs(zz) = surface(ax, X, Y, zz*ones(h3,w3), im2double(img), ...
+            'FaceColor','texturemap', 'EdgeColor','none', ...
+            'FaceAlpha','texturemap', 'AlphaData', alpha_mask, 'AlphaDataMapping','none');
+    end
+    hold(ax,'off');
+    axis(ax,'tight');
+    daspect(ax,[1 1 1]);
+    view(ax, 35, 25);
+    camproj(ax,'perspective');
+    set(ax,'YDir','reverse','Color','k');
+    xlabel(ax,'X'); ylabel(ax,'Y'); zlabel(ax,'Z (slice index)');
+    title(ax,sprintf('Interactive 3D color stack (XY ds=%d, repeat=%d)', ...
+        xy_downsample_for_3d, repeat_per_slice), 'Color','w');
+    rotate3d(ax,'on');
+    z0 = z3;
+    hTxt = uicontrol(fig, 'Style', 'text', 'Units', 'normalized', ...
+        'Position', [0.40 0.02 0.20 0.05], ...
+        'String', sprintf('Visible Z: %d / %d', z0, z3), ...
+        'BackgroundColor', 'k', 'ForegroundColor', 'w');
+    hSl = uicontrol(fig, 'Style', 'slider', 'Units', 'normalized', ...
+        'Position', [0.08 0.08 0.84 0.04], ...
+        'Min', 1, 'Max', z3, 'Value', z0, ...
+        'SliderStep', [1/max(1,z3-1), min(10/max(1,z3-1),1)]);
+    set(hSl, 'Callback', @(src,~) update_3d_z_slider(src,hs,hTxt,z3));
+    disp('3D stack opened. Drag to rotate; use slider to move through Z.');
+end
+
+function update_3d_z_slider(src,hs,hTxt,zN)
+k = round(src.Value);
+k = max(1,min(zN,k));
+set(src,'Value',k);
+for ii = 1:zN
+    if ii <= k
+        set(hs(ii), 'Visible', 'on');
+    else
+        set(hs(ii), 'Visible', 'off');
+    end
+end
+set(hTxt, 'String', sprintf('Visible Z: %d / %d', k, zN));
+drawnow limitrate;
 end

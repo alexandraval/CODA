@@ -49,13 +49,18 @@ end
 
 if write_check_tiff
     out_tif = fullfile(pth_registered,'registered_rgb_stack.tif');
-    for k = 1:z
-        rgb = vol_rgb(:,:,:,k);
-        if k == 1
-            imwrite(rgb,out_tif,'Compression','none');
-        else
-            imwrite(rgb,out_tif,'WriteMode','append','Compression','none');
+    try
+        for k = 1:z
+            rgb = vol_rgb(:,:,:,k);
+            if k == 1
+                imwrite(rgb,out_tif,'Compression','none');
+            else
+                imwrite(rgb,out_tif,'WriteMode','append','Compression','none');
+            end
         end
+    catch ME
+        warning(['Could not write stack TIFF (likely size limit). ', ...
+                 'vol_rgb MAT was saved successfully. Details: ', ME.message]);
     end
 end
 end
